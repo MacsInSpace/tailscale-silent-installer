@@ -46,7 +46,7 @@ function Get-InstalledTailscaleVersion {
                             -ErrorAction SilentlyContinue |
            Where-Object { $_.DisplayName -like "Tailscale*" } |
            Select-Object -First 1
-    return $reg?.DisplayVersion
+    if ($reg) { return $reg.DisplayVersion } else { return $null }
 }
 
 function Get-Architecture {
