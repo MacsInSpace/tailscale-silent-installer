@@ -14,7 +14,26 @@
 #>
 
 # ── Configuration ─────────────────────────────────────────────────────────────
+
+<#
+You may need to enable TLS for secure downloads on PS version 5ish
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
+
 $tailscale_authkey = "tskey-auth-12345qwert-1234567890qwertyuiop"
+
+Auth key - can be passed as a variable before invoking this script:
+$tailscale_authkey = "tskey-auth-xxxx"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 | iex
+or
+$tailscale_authkey = "tskey-auth-xxxx"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
+#>
+
+if (-not $tailscale_authkey) {
+    $tailscale_authkey = Read-Host "Enter Tailscale auth key (tskey-auth-...)"
+    if (-not $tailscale_authkey) {
+        throw "No auth key provided. Set one as a variable or hard code it. Aborting."
+    }
+}
+
 
 # MSI install properties
 $msiProperties = @(
