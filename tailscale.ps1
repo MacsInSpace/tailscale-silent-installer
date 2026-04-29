@@ -21,6 +21,10 @@ $msiProperties = @(
     "TS_NOLAUNCH=1"              # Don't launch GUI during install
     "TS_INSTALLUPDATES=always"   # Auto-install updates
     "TS_UNATTENDEDMODE=always"   # Run unattended (no interactive login prompt)
+    "TS_ONBOARDING_FLOW=hide"    # Suppresses the first-run welcome/setup wizard
+    "TS_ADMINCONSOLE=hide"       # Removes the admin console link from the tray menu
+    "TS_ADVERTISEEXITNODE=never" # Locks down exit node advertising so the machine can't be turned into one by a user
+    "TS_ALLOWINCOMINGCONNECTIONS=always" # Locks it on so users can't disable it through the UI, useful if you need reliable inbound access to managed machines
 )
 
 # Tailscale CLI after install
