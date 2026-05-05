@@ -28,9 +28,9 @@ $tailscale_authkey = "tskey-auth-xxxx"; iwr https://raw.githubusercontent.com/Ma
 #>
 
 if (-not $tailscale_authkey) {
-    $tailscale_authkey = Read-Host "Enter Tailscale auth key (tskey-auth-...)"
+    $tailscale_authkey = Read-Host "Enter Tailscale auth key (tskey-auth-...) or press enter to skip"
     if (-not $tailscale_authkey) {
-        throw "No auth key provided. Set one as a variable or hard code it. Aborting."
+        Write-Host "No auth key provided. Tailscale installing but not running."
     }
 }
 
@@ -136,17 +136,18 @@ Write-Host "Installation complete." -ForegroundColor Green
 
 # Give the service a moment to start after install
 Start-Sleep -Seconds 5
-
-if (Test-Path $tailscaleExe) {
-    Write-Host "Authenticating with auth key..." -ForegroundColor Cyan
-    & $tailscaleExe up --authkey=$tailscale_authkey --unattended
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Tailscale authenticated and connected." -ForegroundColor Green
+if ( $tailscale_authkey) {
+    if (Test-Path $tailscaleExe) {
+        Write-Host "Authenticating with auth key..." -ForegroundColor Cyan
+        & $tailscaleExe up --authkey=$tailscale_authkey --unattended
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Tailscale authenticated and connected." -ForegroundColor Green
+        } else {
+            Write-Warning "tailscale up exited with code $LASTEXITCODE — check manually."
+        }
     } else {
-        Write-Warning "tailscale up exited with code $LASTEXITCODE — check manually."
+        Write-Warning "tailscale.exe not found at expected path. You may need to run 'tailscale up --authkey=...' manually after reboot."
     }
-} else {
-    Write-Warning "tailscale.exe not found at expected path. You may need to run 'tailscale up --authkey=...' manually after reboot."
 }
 
 # Clean up MSI
