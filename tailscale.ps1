@@ -17,7 +17,7 @@
     $tailscale_authkey = "tskey-auth-xxxx"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
 
     Silent (pre-set key, custom headscale server):
-    $tailscale_authkey = "tskey-auth-xxxx"; $tailscale_loginserver = "https://support.sysready.com.au"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
+    $tailscale_authkey = "tskey-auth-xxxx"; $tailscale_loginserver = "https://my.headscaleserver.com"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
 
     Interactive (will prompt for both):
     iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
