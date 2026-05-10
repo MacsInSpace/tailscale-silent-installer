@@ -42,6 +42,12 @@ if (-not $tailscale_loginserver) {
     Write-Host "No login server provided. Using default Tailscale coordination server." -ForegroundColor Yellow
 }
 
+# ── Tailscale Up Options ───────────────────────────────────────────────────────
+# Can be overridden before running:
+# $tailscale_acceptdns = "true"; $tailscale_acceptroutes = "true"
+if (-not $tailscale_acceptdns)    { $tailscale_acceptdns    = "false" }
+if (-not $tailscale_acceptroutes) { $tailscale_acceptroutes = "false" }
+
 # ── MSI Properties ────────────────────────────────────────────────────────────
 $msiProperties = @(
     "TS_NOLAUNCH=1"                      # Don't launch GUI during install
@@ -130,7 +136,14 @@ if ($proc.ExitCode -eq 3010) {
     Write-Warning "A reboot is required to complete installation (exit code 3010)."
 }
 
-Write-Host "Installation complete." -ForegroundColor Green
+if (Test-Path $tailscaleExe) {
+    Write-Host "Installation complete." -ForegroundColor Green
+    Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+    Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+    } else {
+    Write-Host "Installation failed." -ForegroundColor Green
+    exit 1
+}
 
 # ── Authenticate ──────────────────────────────────────────────────────────────
 Start-Sleep -Seconds 5
@@ -139,12 +152,20 @@ if ($tailscale_authkey) {
     if (Test-Path $tailscaleExe) {
         Write-Host "Authenticating with auth key..." -ForegroundColor Cyan
 
-        $upArgs = @("up", "--authkey=$tailscale_authkey", "--unattended")
+        $upArgs = @(
+            "up",
+            "--authkey=$tailscale_authkey",
+            "--unattended",
+            "--accept-dns=$tailscale_acceptdns",
+            "--accept-routes=$tailscale_acceptroutes"
+        )
+
         if ($tailscale_loginserver) {
             $upArgs += "--login-server=$tailscale_loginserver"
         }
 
         & $tailscaleExe @upArgs
+
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Tailscale authenticated and connected." -ForegroundColor Green
         } else {
