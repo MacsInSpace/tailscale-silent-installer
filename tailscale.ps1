@@ -11,56 +11,59 @@
     - Downloads the appropriate MSI
     - Installs silently with desired MSI properties
     - Authenticates with the provided auth key
+
+.USAGE
+    Silent (pre-set key, default Tailscale coordination server):
+    $tailscale_authkey = "tskey-auth-xxxx"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
+
+    Silent (pre-set key, custom headscale server):
+    $tailscale_authkey = "tskey-auth-xxxx"; $tailscale_loginserver = "https://support.sysready.com.au"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
+
+    Interactive (will prompt for both):
+    iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
+
+You may need to enable TLS for secure downloads on PS version 5ish:
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 #>
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-<#
-You may need to enable TLS for secure downloads on PS version 5ish
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
-
-$tailscale_authkey = "tskey-auth-12345qwert-1234567890qwertyuiop"
-
-Auth key - can be passed as a variable before invoking this script:
-$tailscale_authkey = "tskey-auth-xxxx"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 | iex
-or
-$tailscale_authkey = "tskey-auth-xxxx"; iwr https://raw.githubusercontent.com/MacsInSpace/tailscale-silent-installer/refs/heads/main/tailscale.ps1 -UseBasicParsing | iex
-#>
-
+# ── Auth Key ──────────────────────────────────────────────────────────────────
 if (-not $tailscale_authkey) {
-    $tailscale_authkey = Read-Host "Enter Tailscale auth key (tskey-auth-...) or press enter to skip"
-    if (-not $tailscale_authkey) {
-        Write-Host "No auth key provided. Tailscale installing but not running."
-    }
+    $tailscale_authkey = Read-Host "Enter Tailscale auth key (tskey-auth-...) or press Enter to skip"
+}
+if (-not $tailscale_authkey) {
+    Write-Host "No auth key provided. Tailscale will be installed but not connected." -ForegroundColor Yellow
 }
 
+# ── Login Server ──────────────────────────────────────────────────────────────
+if (-not $tailscale_loginserver) {
+    $tailscale_loginserver = Read-Host "Enter login server URL (e.g. https://support.sysready.com.au) or press Enter for default Tailscale"
+}
+if (-not $tailscale_loginserver) {
+    Write-Host "No login server provided. Using default Tailscale coordination server." -ForegroundColor Yellow
+}
 
-# MSI install properties
+# ── MSI Properties ────────────────────────────────────────────────────────────
 $msiProperties = @(
-    "TS_NOLAUNCH=1"              # Don't launch GUI during install
-    "TS_INSTALLUPDATES=always"   # Auto-install updates
-    "TS_UNATTENDEDMODE=always"   # Run unattended (no interactive login prompt)
-    "TS_ONBOARDING_FLOW=hide"    # Suppresses the first-run welcome/setup wizard
-    "TS_ADMINCONSOLE=hide"       # Removes the admin console link from the tray menu
-    "TS_ADVERTISEEXITNODE=never" # Locks down exit node advertising so the machine can't be turned into one by a user
-    "TS_ALLOWINCOMINGCONNECTIONS=always" # Locks it on so users can't disable it through the UI, useful if you need reliable inbound access to managed machines
+    "TS_NOLAUNCH=1"                      # Don't launch GUI during install
+    "TS_INSTALLUPDATES=always"           # Auto-install updates
+    "TS_UNATTENDEDMODE=always"           # Run unattended (no interactive login prompt)
+    "TS_ONBOARDING_FLOW=hide"            # Suppress first-run welcome/setup wizard
+    "TS_ADMINCONSOLE=hide"               # Remove admin console link from tray menu
+    "TS_ADVERTISEEXITNODE=never"         # Prevent machine being used as exit node
+    "TS_ALLOWINCOMINGCONNECTIONS=always" # Lock incoming connections on
 )
 
-# Tailscale CLI after install
 $tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
 $logFile      = "$env:TEMP\tailscale-install.log"
-# ──────────────────────────────────────────────────────────────────────────────
 
+# ── Functions ─────────────────────────────────────────────────────────────────
 function Get-LatestTailscaleVersion {
     Write-Host "Fetching latest Tailscale version..." -ForegroundColor Cyan
     $html = (Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/#windows" -UseBasicParsing).Content
-
-    # Grab versions from the Windows MSI filenames
     $matches = [regex]::Matches($html, 'tailscale-setup-([\d.]+)-amd64\.msi')
     if ($matches.Count -eq 0) {
         throw "Could not parse latest version from pkgs.tailscale.com"
     }
-    # Return the first (latest) match
     return $matches[0].Groups[1].Value
 }
 
@@ -76,9 +79,9 @@ function Get-Architecture {
     $cpu = (Get-CimInstance -ClassName Win32_Processor).Architecture
     # 0=x86, 5=ARM, 6=IA64, 9=x64, 12=ARM64
     switch ($cpu) {
-        9  { return "amd64" }
-        12 { return "arm64" }
-        0  { return "x86"   }
+        9       { return "amd64" }
+        12      { return "arm64" }
+        0       { return "x86"   }
         default {
             Write-Warning "Unknown CPU architecture ($cpu), defaulting to amd64."
             return "amd64"
@@ -87,21 +90,20 @@ function Get-Architecture {
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-
-$latestVersion   = Get-LatestTailscaleVersion
+$latestVersion    = Get-LatestTailscaleVersion
 $installedVersion = Get-InstalledTailscaleVersion
-$arch            = Get-Architecture
+$arch             = Get-Architecture
 
-Write-Host "Latest version  : $latestVersion"
+Write-Host "Latest version   : $latestVersion"
 Write-Host "Installed version: $(if ($installedVersion) { $installedVersion } else { 'Not installed' })"
-Write-Host "Architecture    : $arch"
+Write-Host "Architecture     : $arch"
+Write-Host "Login server     : $(if ($tailscale_loginserver) { $tailscale_loginserver } else { 'Default (Tailscale)' })"
 
 if ($installedVersion -and $installedVersion -eq $latestVersion) {
     Write-Host "Tailscale $latestVersion is already installed. Nothing to do." -ForegroundColor Green
     exit 0
 }
 
-# Build download URL and local path
 $msiFileName = "tailscale-setup-$latestVersion-$arch.msi"
 $downloadUrl = "https://pkgs.tailscale.com/stable/$msiFileName"
 $msiPath     = Join-Path $env:TEMP $msiFileName
@@ -113,9 +115,8 @@ if (-not (Test-Path $msiPath)) {
     throw "Download failed — file not found at $msiPath"
 }
 
-# Build msiexec argument string
-$propString  = $msiProperties -join " "
-$msiArgs     = "/i `"$msiPath`" /qn /norestart /L*v `"$logFile`" $propString"
+$propString = $msiProperties -join " "
+$msiArgs    = "/i `"$msiPath`" /qn /norestart /L*v `"$logFile`" $propString"
 
 Write-Host "Installing Tailscale $latestVersion ($arch)..." -ForegroundColor Cyan
 Write-Host "  msiexec $msiArgs"
@@ -125,7 +126,6 @@ $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -Pass
 if ($proc.ExitCode -notin 0, 3010) {
     throw "msiexec exited with code $($proc.ExitCode). Check log: $logFile"
 }
-
 if ($proc.ExitCode -eq 3010) {
     Write-Warning "A reboot is required to complete installation (exit code 3010)."
 }
@@ -133,23 +133,27 @@ if ($proc.ExitCode -eq 3010) {
 Write-Host "Installation complete." -ForegroundColor Green
 
 # ── Authenticate ──────────────────────────────────────────────────────────────
-
-# Give the service a moment to start after install
 Start-Sleep -Seconds 5
-if ( $tailscale_authkey) {
+
+if ($tailscale_authkey) {
     if (Test-Path $tailscaleExe) {
         Write-Host "Authenticating with auth key..." -ForegroundColor Cyan
-        & $tailscaleExe up --authkey=$tailscale_authkey --unattended
+
+        $upArgs = @("up", "--authkey=$tailscale_authkey", "--unattended")
+        if ($tailscale_loginserver) {
+            $upArgs += "--login-server=$tailscale_loginserver"
+        }
+
+        & $tailscaleExe @upArgs
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Tailscale authenticated and connected." -ForegroundColor Green
         } else {
             Write-Warning "tailscale up exited with code $LASTEXITCODE — check manually."
         }
     } else {
-        Write-Warning "tailscale.exe not found at expected path. You may need to run 'tailscale up --authkey=...' manually after reboot."
+        Write-Warning "tailscale.exe not found. Run 'tailscale up --authkey=...' manually after reboot."
     }
 }
 
-# Clean up MSI
 Remove-Item $msiPath -ErrorAction SilentlyContinue
 Write-Host "Done. MSI cleaned up from TEMP." -ForegroundColor Green
