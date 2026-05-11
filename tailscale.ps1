@@ -140,6 +140,35 @@ if (Test-Path $tailscaleExe) {
     Write-Host "Installation complete." -ForegroundColor Green
     Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
     Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+    
+    # ── Remove Start Menu & Desktop Shortcuts ─────────────────────────────────────
+    Write-Host "Cleaning up shortcuts..." -ForegroundColor Cyan
+    
+    $shortcutPaths = @(
+        # Start menu - all users
+        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Tailscale"
+        "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Tailscale.lnk"
+        # Start menu - current user
+        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Tailscale"
+        "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Tailscale.lnk"
+        # Desktop - all users
+        "$env:PUBLIC\Desktop\Tailscale.lnk"
+        # Desktop - current user
+        "$env:USERPROFILE\Desktop\Tailscale.lnk"    
+        )
+
+    foreach ($path in $shortcutPaths) {
+        if (Test-Path $path) {
+            Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Host "  Removed: $path" -ForegroundColor Gray
+        }
+    }
+
+    Write-Host "Shortcuts cleaned up." -ForegroundColor Green
+    # Prevent Tailscale GUI from launching at login
+    $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
+    Remove-ItemProperty -Path $regPath -Name "Tailscale" -ErrorAction SilentlyContinue
+
     } else {
     Write-Host "Installation failed." -ForegroundColor Green
     exit 1
