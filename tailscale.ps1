@@ -36,7 +36,7 @@ if (-not $tailscale_authkey) {
 
 # ── Login Server ──────────────────────────────────────────────────────────────
 if (-not $tailscale_loginserver) {
-    $tailscale_loginserver = Read-Host "Enter login server URL (e.g. https://support.sysready.com.au) or press Enter for default Tailscale"
+    $tailscale_loginserver = Read-Host "Enter login server URL (e.g. https://my.headscaleserver.com) or press Enter for default Tailscale"
 }
 if (-not $tailscale_loginserver) {
     Write-Host "No login server provided. Using default Tailscale coordination server." -ForegroundColor Yellow
