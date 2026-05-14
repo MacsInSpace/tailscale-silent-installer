@@ -25,6 +25,26 @@
 You may need to enable TLS for secure downloads on PS version 5ish:
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 #>
+
+# ── Config ────────────────────────────────────────────────────────────────────
+$logFile = "$env:TEMP\tailscale-install.log"
+
+function Write-Log {
+    param(
+        [string]$Message,
+        [ValidateSet("INFO","WARN","ERROR")]
+        [string]$Level = "INFO"
+    )
+    $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $entry = "$timestamp [$Level] $Message"
+    Add-Content -Path $logFile -Value $entry
+    switch ($Level) {
+        "INFO"  { Write-Log $Message -ForegroundColor Cyan }
+        "WARN"  { Write-Warning $Message }
+        "ERROR" { Write-Log $Message -ForegroundColor Red }
+    }
+}
+
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # ── Auth Key ──────────────────────────────────────────────────────────────────
@@ -61,7 +81,6 @@ $msiProperties = @(
 )
 
 $tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
-$logFile      = "$env:TEMP\tailscale-install.log"
 
 # ── Functions ─────────────────────────────────────────────────────────────────
 function Get-LatestTailscaleVersion {
@@ -96,8 +115,34 @@ function Get-Architecture {
     }
 }
 
-# ── Main ──────────────────────────────────────────────────────────────────────
-$latestVersion    = Get-LatestTailscaleVersion
+
+# ── Connectivity Check ────────────────────────────────────────────────────────
+function Test-InternetConnectivity {
+    $targets = @(
+        "pkgs.tailscale.com"
+        "tailscale.com"
+    )
+
+    foreach ($target in $targets) {
+        try {
+            Invoke-WebRequest -Uri "https://$target" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop | Out-Null
+            Write-Log "Connectivity OK: $target"
+        } catch {
+            Write-Log "Connectivity FAIL: $target — $($_.Exception.Message)" -Level ERROR
+            return $false
+        }
+    }
+    return $true
+}
+
+Write-Log "Checking internet connectivity..." -ForegroundColor Cyan
+if (-not (Test-InternetConnectivity)) {
+    Write-Warning "Connectivity check failed. See log: $env:TEMP\tailscale-install.log"
+    exit 1
+}
+Write-Log "Connectivity OK." -ForegroundColor Green
+
+# ── Main ──────────────────────────────────────────────────────────────────────$latestVersion    = Get-LatestTailscaleVersion
 $installedVersion = Get-InstalledTailscaleVersion
 $arch             = Get-Architecture
 
