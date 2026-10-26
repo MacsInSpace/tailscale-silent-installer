@@ -26,9 +26,13 @@ You may need to enable TLS for secure downloads on PS version 5ish:
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 #>
 
-# ── Config ────────────────────────────────────────────────────────────────────
-$logFile = "$env:TEMP\tailscale-install.log"
+# -- Config -------------------------------------------------------------------
+$logFile      = "$env:TEMP\tailscale-install.log"
+$tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# -- Logging ------------------------------------------------------------------
 function Write-Log {
     param(
         [string]$Message,
@@ -36,40 +40,38 @@ function Write-Log {
         [string]$Level = "INFO"
     )
     $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-    $entry = "$timestamp [$Level] $Message"
+    $entry     = "$timestamp [$Level] $Message"
     Add-Content -Path $logFile -Value $entry
     switch ($Level) {
-        "INFO"  { Write-Log $Message -ForegroundColor Cyan }
+        "INFO"  { Write-Host $Message -ForegroundColor Cyan }
         "WARN"  { Write-Warning $Message }
-        "ERROR" { Write-Log $Message -ForegroundColor Red }
+        "ERROR" { Write-Host $Message -ForegroundColor Red }
     }
 }
 
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-
-# ── Auth Key ──────────────────────────────────────────────────────────────────
+# -- Auth Key -----------------------------------------------------------------
 if (-not $tailscale_authkey) {
     $tailscale_authkey = Read-Host "Enter Tailscale auth key (tskey-auth-...) or press Enter to skip"
 }
 if (-not $tailscale_authkey) {
-    Write-Host "No auth key provided. Tailscale will be installed but not connected." -ForegroundColor Yellow
+    Write-Log "No auth key provided. Tailscale will be installed but not connected." -Level WARN
 }
 
-# ── Login Server ──────────────────────────────────────────────────────────────
+# -- Login Server -------------------------------------------------------------
 if (-not $tailscale_loginserver) {
     $tailscale_loginserver = Read-Host "Enter login server URL (e.g. https://my.headscaleserver.com) or press Enter for default Tailscale"
 }
 if (-not $tailscale_loginserver) {
-    Write-Host "No login server provided. Using default Tailscale coordination server." -ForegroundColor Yellow
+    Write-Log "No login server provided. Using default Tailscale coordination server." -Level WARN
 }
 
-# ── Tailscale Up Options ───────────────────────────────────────────────────────
+# -- Tailscale Up Options -----------------------------------------------------
 # Can be overridden before running:
 # $tailscale_acceptdns = "true"; $tailscale_acceptroutes = "true"
 if (-not $tailscale_acceptdns)    { $tailscale_acceptdns    = "false" }
 if (-not $tailscale_acceptroutes) { $tailscale_acceptroutes = "false" }
 
-# ── MSI Properties ────────────────────────────────────────────────────────────
+# -- MSI Properties -----------------------------------------------------------
 $msiProperties = @(
     "TS_NOLAUNCH=1"                      # Don't launch GUI during install
     "TS_INSTALLUPDATES=always"           # Auto-install updates
@@ -80,17 +82,15 @@ $msiProperties = @(
     "TS_ALLOWINCOMINGCONNECTIONS=always" # Lock incoming connections on
 )
 
-$tailscaleExe = "$env:ProgramFiles\Tailscale\tailscale.exe"
-
-# ── Functions ─────────────────────────────────────────────────────────────────
+# -- Functions ----------------------------------------------------------------
 function Get-LatestTailscaleVersion {
-    Write-Host "Fetching latest Tailscale version..." -ForegroundColor Cyan
+    Write-Log "Fetching latest Tailscale version..."
     $html = (Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/#windows" -UseBasicParsing).Content
-    $matches = [regex]::Matches($html, 'tailscale-setup-([\d.]+)-amd64\.msi')
-    if ($matches.Count -eq 0) {
+    $versionMatches = [regex]::Matches($html, 'tailscale-setup-([\d.]+)-amd64\.msi')
+    if ($versionMatches.Count -eq 0) {
         throw "Could not parse latest version from pkgs.tailscale.com"
     }
-    return $matches[0].Groups[1].Value
+    return $versionMatches[0].Groups[1].Value
 }
 
 function Get-InstalledTailscaleVersion {
@@ -109,50 +109,50 @@ function Get-Architecture {
         12      { return "arm64" }
         0       { return "x86"   }
         default {
-            Write-Warning "Unknown CPU architecture ($cpu), defaulting to amd64."
+            Write-Log "Unknown CPU architecture ($cpu), defaulting to amd64." -Level WARN
             return "amd64"
         }
     }
 }
 
-
-# ── Connectivity Check ────────────────────────────────────────────────────────
 function Test-InternetConnectivity {
     $targets = @(
         "pkgs.tailscale.com"
         "tailscale.com"
     )
-
     foreach ($target in $targets) {
         try {
             Invoke-WebRequest -Uri "https://$target" -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop | Out-Null
             Write-Log "Connectivity OK: $target"
         } catch {
-            Write-Log "Connectivity FAIL: $target — $($_.Exception.Message)" -Level ERROR
+            Write-Log "Connectivity FAIL: $target - $($_.Exception.Message)" -Level ERROR
             return $false
         }
     }
     return $true
 }
 
-Write-Log "Checking internet connectivity..." -ForegroundColor Cyan
+# -- Connectivity Check -------------------------------------------------------
+Write-Log "Checking internet connectivity..."
 if (-not (Test-InternetConnectivity)) {
-    Write-Warning "Connectivity check failed. See log: $env:TEMP\tailscale-install.log"
+    Write-Log "Connectivity check failed. See log: $logFile" -Level ERROR
     exit 1
 }
-Write-Log "Connectivity OK." -ForegroundColor Green
+Write-Log "Connectivity OK."
 
-# ── Main ──────────────────────────────────────────────────────────────────────$latestVersion    = Get-LatestTailscaleVersion
+# -- Main ---------------------------------------------------------------------
+$latestVersion    = Get-LatestTailscaleVersion
 $installedVersion = Get-InstalledTailscaleVersion
 $arch             = Get-Architecture
+$displayVersion   = if ($installedVersion) { $installedVersion } else { "Not installed" }
 
-Write-Host "Latest version   : $latestVersion"
-Write-Host "Installed version: $(if ($installedVersion) { $installedVersion } else { 'Not installed' })"
-Write-Host "Architecture     : $arch"
-Write-Host "Login server     : $(if ($tailscale_loginserver) { $tailscale_loginserver } else { 'Default (Tailscale)' })"
+Write-Log "Latest version   : $latestVersion"
+Write-Log "Installed version: $displayVersion"
+Write-Log "Architecture     : $arch"
+Write-Log "Login server     : $(if ($tailscale_loginserver) { $tailscale_loginserver } else { 'Default (Tailscale)' })"
 
 if ($installedVersion -and $installedVersion -eq $latestVersion) {
-    Write-Host "Tailscale $latestVersion is already installed. Nothing to do." -ForegroundColor Green
+    Write-Log "Tailscale $latestVersion is already installed. Nothing to do."
     exit 0
 }
 
@@ -160,72 +160,73 @@ $msiFileName = "tailscale-setup-$latestVersion-$arch.msi"
 $downloadUrl = "https://pkgs.tailscale.com/stable/$msiFileName"
 $msiPath     = Join-Path $env:TEMP $msiFileName
 
-Write-Host "Downloading $downloadUrl ..." -ForegroundColor Cyan
+Write-Log "Downloading $downloadUrl ..."
 Invoke-WebRequest -Uri $downloadUrl -OutFile $msiPath -UseBasicParsing
 
 if (-not (Test-Path $msiPath)) {
-    throw "Download failed — file not found at $msiPath"
+    Write-Log "Download failed - file not found at $msiPath" -Level ERROR
+    exit 1
 }
 
 $propString = $msiProperties -join " "
 $msiArgs    = "/i `"$msiPath`" /qn /norestart /L*v `"$logFile`" $propString"
 
-Write-Host "Installing Tailscale $latestVersion ($arch)..." -ForegroundColor Cyan
-Write-Host "  msiexec $msiArgs"
+Write-Log "Installing Tailscale $latestVersion ($arch)..."
+Write-Log "msiexec $msiArgs"
 
 $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru
 
 if ($proc.ExitCode -notin 0, 3010) {
-    throw "msiexec exited with code $($proc.ExitCode). Check log: $logFile"
+    Write-Log "msiexec exited with code $($proc.ExitCode). Check log: $logFile" -Level ERROR
+    exit 1
 }
 if ($proc.ExitCode -eq 3010) {
-    Write-Warning "A reboot is required to complete installation (exit code 3010)."
+    Write-Log "A reboot is required to complete installation (exit code 3010)." -Level WARN
 }
 
 if (Test-Path $tailscaleExe) {
-    Write-Host "Installation complete." -ForegroundColor Green
-    Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+    Write-Log "Installation complete."
+
+    # -- Enable RDP -----------------------------------------------------------
+    Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+                     -Name "fDenyTSConnections" -Value 0
     Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-    
-    # ── Remove Start Menu & Desktop Shortcuts ─────────────────────────────────────
-    Write-Host "Cleaning up shortcuts..." -ForegroundColor Cyan
-    
+    Write-Log "RDP enabled."
+
+    # -- Remove Start Menu and Desktop Shortcuts ------------------------------
+    Write-Log "Cleaning up shortcuts..."
     $shortcutPaths = @(
-        # Start menu - all users
         "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Tailscale"
         "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Tailscale.lnk"
-        # Start menu - current user
         "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Tailscale"
         "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Tailscale.lnk"
-        # Desktop - all users
         "$env:PUBLIC\Desktop\Tailscale.lnk"
-        # Desktop - current user
-        "$env:USERPROFILE\Desktop\Tailscale.lnk"    
-        )
-
+        "$env:USERPROFILE\Desktop\Tailscale.lnk"
+    )
     foreach ($path in $shortcutPaths) {
         if (Test-Path $path) {
             Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
-            Write-Host "  Removed: $path" -ForegroundColor Gray
+            Write-Log "Removed: $path"
         }
     }
+    Write-Log "Shortcuts cleaned up."
 
-    Write-Host "Shortcuts cleaned up." -ForegroundColor Green
-    # Prevent Tailscale GUI from launching at login
+    # -- Prevent Tailscale GUI launching at login -----------------------------
     $regPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run"
     Remove-ItemProperty -Path $regPath -Name "Tailscale" -ErrorAction SilentlyContinue
+    Write-Log "Tailscale GUI startup entry removed."
 
-    } else {
-    Write-Host "Installation failed." -ForegroundColor Green
+} else {
+    Write-Log "Installation failed - tailscale.exe not found after install." -Level ERROR
     exit 1
 }
 
-# ── Authenticate ──────────────────────────────────────────────────────────────
+# -- Authenticate -------------------------------------------------------------
 Start-Sleep -Seconds 5
 
 if ($tailscale_authkey) {
     if (Test-Path $tailscaleExe) {
-        Write-Host "Authenticating with auth key..." -ForegroundColor Cyan
+        Write-Log "Authenticating with auth key..."
 
         $upArgs = @(
             "up",
@@ -242,14 +243,15 @@ if ($tailscale_authkey) {
         & $tailscaleExe @upArgs
 
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "Tailscale authenticated and connected." -ForegroundColor Green
+            Write-Log "Tailscale authenticated and connected."
         } else {
-            Write-Warning "tailscale up exited with code $LASTEXITCODE — check manually."
+            Write-Log "tailscale up exited with code $LASTEXITCODE - check manually." -Level WARN
         }
     } else {
-        Write-Warning "tailscale.exe not found. Run 'tailscale up --authkey=...' manually after reboot."
+        Write-Log "tailscale.exe not found. Run 'tailscale up --authkey=...' manually after reboot." -Level WARN
     }
 }
 
+# -- Cleanup ------------------------------------------------------------------
 Remove-Item $msiPath -ErrorAction SilentlyContinue
-Write-Host "Done. MSI cleaned up from TEMP." -ForegroundColor Green
+Write-Log "Done. MSI cleaned up from TEMP."
